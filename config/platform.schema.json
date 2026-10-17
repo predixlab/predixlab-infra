@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PredixLab platform definition",
+  "description": "Workloads shared by azure/main.bicep and the local plx orchestrator.",
+  "type": "object",
+  "required": ["schemaVersion", "registry", "databaseName", "endpoints", "sharedStorage", "images", "secrets", "parameters", "containerApps", "jobs", "functionApps", "staticSites", "local"],
+  "$defs": {
+    "envEntry": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "value": { "type": "string" },
+        "secret": { "type": "string", "description": "Key of the secrets catalog" },
+        "parameter": { "type": "string", "description": "Key of the parameters catalog; the value is supplied at deployment time" },
+        "values": {
+          "type": "object",
+          "description": "Per-environment values; the variable is omitted where no key exists",
+          "additionalProperties": { "type": "string" }
+        },
+        "note": { "type": "string" }
+      },
+      "oneOf": [
+        { "required": ["value"] },
+        { "required": ["secret"] },
+        { "required": ["parameter"] },
+        { "required": ["values"] }
+      ],
+      "additionalProperties": false
+    },
+    "container": {
+      "type": "object",
+      "required": ["name", "image", "cpu", "memory", "env"],
+      "properties": {
+        "name": { "type": "string" },
+        "image": { "type": "string", "description": "Key of images" },
+        "command": { "type": "array", "items": { "type": "string" } },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "cpu": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?$" },
+        "memory": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]+)?(Mi|Gi)$" },
+        "ephemeralStorage": { "type": "string" },
+        "volumeMounts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["volumeName", "mountPath"],
+            "properties": { "volumeName": { "type": "string" }, "mountPath": { "type": "string" } }
+          }
+        },
+        "probes": { "type": "array" },
+        "env": { "type": "array", "items": { "$ref": "#/$defs/envEntry" } },
+        "local": {
+          "type": "object",
+          "properties": {
+            "command": { "type": "array", "items": { "type": "string" } },
+            "reason": { "type": "string" }
+          }
+        }
+      }
+    },
+    "volume": {
+      "type": "object",
+      "required": ["name", "storageName"],
+      "properties": { "name": { "type": "string" }, "storageName": { "type": "string" } }
+    }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "const": 1 },
+    "description": { "type": "string" },
+    "registry": { "type": "string" },
+    "databaseName": { "type": "string" },
+    "endpoints": {
+      "type": "object",
+      "required": ["prod", "local"],
+      "additionalProperties": {
+        "type": "object",
+        "required": ["api", "dashboard", "portal"],
+        "additionalProperties": { "type": "string", "format": "uri" }
+      }
+    },
+    "sharedStorage": {
+      "type": "object",
+      "required": ["shareName", "quotaGiB", "mountPath"]
+    },
+    "queues": { "type": "array", "items": { "type": "string" } },
+    "images": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["repository", "tagPolicy", "defaultTag", "source"],
+        "properties": {
+          "repository": { "type": "string" },
+          "tagPolicy": { "enum": ["live", "fixed"], "description": "live: keep the tag CI deployed; fixed: always defaultTag" },
+          "defaultTag": { "type": "string" },
+          "source": {
+            "type": "object",
+            "required": ["repo"],
+            "properties": {
+              "repo": { "type": "string" },
+              "dockerfile": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "secrets": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["keyVaultSecret", "local"],
+        "properties": {
+          "keyVaultSecret": { "type": "string" },
+          "description": { "type": "string" },
+          "local": { "enum": ["mongodb", "azurite", "generated", "optional"] }
+        }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "description": "Non-secret values that are specific to an environment, subscription or operator and are never committed. Azure deployments read PLX_PARAM_<KEY> (upper case, '-' becomes '_'); the local environment uses 'local'.",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["local"],
+        "properties": {
+          "description": { "type": "string" },
+          "local": { "type": "string", "description": "Value used by the local environment" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "containerApps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "azureName", "environment", "identity", "ingress", "scale", "volumes", "containers"],
+        "properties": {
+          "containers": { "type": "array", "items": { "$ref": "#/$defs/container" } },
+          "volumes": { "type": "array", "items": { "$ref": "#/$defs/volume" } },
+          "registryAuth": { "enum": ["adminCredentials", "environmentIdentity"] },
+          "additionalSecrets": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "azureName", "environment", "identity", "schedule", "replicaTimeout", "replicaRetryLimit", "volumes", "containers"],
+        "properties": {
+          "schedule": {
+            "type": "object",
+            "required": ["cronExpression", "parallelism", "replicaCompletionCount"],
+            "properties": {
+              "cronExpression": { "type": "string", "description": "Five-field cron, evaluated in UTC" },
+              "parallelism": { "type": "integer" },
+              "replicaCompletionCount": { "type": "integer" }
+            }
+          },
+          "replicaTimeout": { "type": "integer" },
+          "replicaRetryLimit": { "type": "integer" },
+          "volumes": { "type": "array", "items": { "$ref": "#/$defs/volume" } },
+          "initContainers": { "type": "array", "items": { "$ref": "#/$defs/container" } },
+          "containers": { "type": "array", "items": { "$ref": "#/$defs/container" } }
+        }
+      }
+    },
+    "functionApps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "azureName", "linuxFxVersion", "source", "settings", "local"],
+        "properties": {
+          "settings": { "type": "array", "items": { "$ref": "#/$defs/envEntry" } }
+        }
+      }
+    },
+    "staticSites": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "azureName", "location", "sku", "repositoryUrl", "branch", "customDomains", "source", "local"],
+        "properties": {
+          "buildEnv": { "type": "array", "items": { "$ref": "#/$defs/envEntry" } }
+        }
+      }
+    },
+    "local": { "type": "object" }
+  }
+}

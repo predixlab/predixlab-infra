@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+# Local staging state lives in ~/.predixlab-staging; never commit secrets.
+*.env
+!*.env.example
+azure/**/*.json.tmp

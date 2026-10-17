@@ -1,0 +1,31 @@
+# Local stand-in for an Azure Static Web App (Free SKU, static content only).
+#
+# Build stage: the same steps as the Static Web Apps GitHub Action (npm install +
+# npm run build in app_location), then production origins compiled into the
+# bundle are rewritten to the local endpoints (config/platform.json originRewrites).
+# Runtime stage: the Static Web Apps CLI emulator serves output_location with the
+# repository's staticwebapp.config.json (routes, fallbacks, response overrides).
+ARG NODE_IMAGE=docker.io/library/node:22-bookworm-slim
+
+FROM ${NODE_IMAGE} AS build
+ARG APP_LOCATION=.
+ARG OUTPUT_LOCATION=dist
+WORKDIR /src
+COPY . .
+WORKDIR /src/${APP_LOCATION}
+RUN npm ci --no-audit --no-fund
+RUN set -a && . /src/.plx/build.env && set +a && npm run build
+RUN sh /src/.plx/rewrite-origins.sh "${OUTPUT_LOCATION}" /src/.plx/origin-rewrites
+
+FROM ${NODE_IMAGE}
+ARG SWA_CLI_VERSION=2.0.10
+ARG APP_LOCATION=.
+ARG OUTPUT_LOCATION=dist
+ARG CONFIG_FILE=staticwebapp.config.json
+# Native keytar bindings are only used by `swa login`/`swa deploy`.
+RUN npm install --global --no-audit --no-fund --ignore-scripts "@azure/static-web-apps-cli@${SWA_CLI_VERSION}"
+COPY --from=build /src/${APP_LOCATION}/${OUTPUT_LOCATION} /site
+COPY --from=build /src/${APP_LOCATION}/${CONFIG_FILE} /swa-config/staticwebapp.config.json
+ENV NO_UPDATE_NOTIFIER=1
+EXPOSE 4280
+CMD ["swa", "start", "/site", "--host", "0.0.0.0", "--port", "4280", "--swa-config-location", "/swa-config"]

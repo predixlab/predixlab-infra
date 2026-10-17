@@ -1,0 +1,563 @@
+{
+  "$schema": "./platform.schema.json",
+  "schemaVersion": 1,
+  "description": "PredixLab workload definitions shared by Azure Bicep (azure/) and the local Apple container staging environment (local/). Values are production facts unless an entry uses per-environment \"values\" or a deployment \"parameter\" (supplied at deployment time, never committed).",
+  "registry": "predixlabacr.azurecr.io",
+  "databaseName": "predixlab",
+  "endpoints": {
+    "prod": {
+      "api": "https://api.predixlab.com",
+      "dashboard": "https://dashboard.predixlab.com",
+      "portal": "https://predixlab.com"
+    },
+    "local": {
+      "api": "http://localhost:8000",
+      "dashboard": "http://localhost:3000",
+      "portal": "http://localhost:8080"
+    }
+  },
+  "sharedStorage": {
+    "shareName": "predixlab-data",
+    "quotaGiB": 102400,
+    "mountPath": "/data"
+  },
+  "queues": [
+    "campaign-events",
+    "campaign-delivery"
+  ],
+  "images": {
+    "api": {
+      "repository": "predixlab-api",
+      "tagPolicy": "live",
+      "defaultTag": "latest",
+      "source": {
+        "repo": "predixlab-api",
+        "dockerfile": "Dockerfile"
+      }
+    },
+    "collector": {
+      "repository": "qstock-collector",
+      "tagPolicy": "fixed",
+      "defaultTag": "latest",
+      "source": {
+        "repo": "predixlab-collector",
+        "dockerfile": "Dockerfile"
+      }
+    },
+    "signals": {
+      "repository": "predixlab-signals",
+      "tagPolicy": "live",
+      "defaultTag": "latest",
+      "source": {
+        "repo": "predixlab-signals",
+        "dockerfile": "Dockerfile"
+      }
+    },
+    "options": {
+      "repository": "qstock-options",
+      "tagPolicy": "fixed",
+      "defaultTag": "latest",
+      "source": {
+        "repo": "predixlab-options",
+        "dockerfile": "Dockerfile"
+      }
+    }
+  },
+  "secrets": {
+    "mongodb-connection-string": {
+      "keyVaultSecret": "predixlab-mongodb-connection-string",
+      "description": "Cosmos DB for MongoDB connection string",
+      "local": "mongodb"
+    },
+    "storage-account-connection-string": {
+      "keyVaultSecret": "predixlab-storage-account-connection-string",
+      "description": "Storage account connection string (campaign queues)",
+      "local": "azurite"
+    },
+    "acs-connection-string": {
+      "keyVaultSecret": "predixlab-acs-connection-string",
+      "description": "Azure Communication Services connection string; empty locally disables email",
+      "local": "optional"
+    },
+    "jwt-secret-key": {
+      "keyVaultSecret": "jwt-secret-key",
+      "description": "JWT and unsubscribe-link signing key shared by API and campaign",
+      "local": "generated"
+    },
+    "session-secret-key": {
+      "keyVaultSecret": "session-secret-key",
+      "description": "Independent API OAuth session-cookie signing key",
+      "local": "generated"
+    },
+    "google-oauth-client-id": {
+      "keyVaultSecret": "google-oauth-client-id",
+      "local": "optional"
+    },
+    "google-oauth-client-secret": {
+      "keyVaultSecret": "google-oauth-client-secret",
+      "local": "optional"
+    },
+    "microsoft-oauth-client-id": {
+      "keyVaultSecret": "microsoft-oauth-client-id",
+      "local": "optional"
+    },
+    "microsoft-oauth-client-secret": {
+      "keyVaultSecret": "microsoft-oauth-client-secret",
+      "local": "optional"
+    },
+    "stripe-secret-key": {
+      "keyVaultSecret": "stripe-secret-key",
+      "description": "Use a Stripe test-mode key locally",
+      "local": "optional"
+    },
+    "stripe-publishable-key": {
+      "keyVaultSecret": "stripe-publishable-key",
+      "local": "optional"
+    },
+    "stripe-webhook-secret": {
+      "keyVaultSecret": "stripe-webhook-secret",
+      "local": "optional"
+    }
+  },
+  "parameters": {
+    "alert-recipients": {
+      "description": "Comma-separated recipients of the job status emails (ACS_TO_EMAILS); empty locally, so no status email is sent",
+      "local": ""
+    }
+  },
+  "containerApps": [
+    {
+      "name": "api",
+      "azureName": "predixlab-api",
+      "environment": "api",
+      "identity": "api",
+      "registryAuth": "adminCredentials",
+      "activeRevisionsMode": "Single",
+      "maxInactiveRevisions": 100,
+      "ingress": {
+        "external": true,
+        "targetPort": 8000,
+        "transport": "Auto",
+        "allowInsecure": false,
+        "customDomains": [
+          "api.predixlab.com"
+        ]
+      },
+      "scale": {
+        "minReplicas": 1,
+        "maxReplicas": 10,
+        "cooldownPeriod": 300,
+        "pollingInterval": 30
+      },
+      "additionalSecrets": [
+        "storage-account-connection-string"
+      ],
+      "volumes": [
+        {
+          "name": "predixlab-data",
+          "storageName": "predixlab-data-rw"
+        }
+      ],
+      "containers": [
+        {
+          "name": "predixlab-api",
+          "image": "api",
+          "local": {
+            "command": [ "/app/.venv/bin/uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000" ],
+            "reason": "The image CMD runs `uv` from /root/.local/bin as appuser. Azure Container Apps (containerd CRI) keeps the default capabilities effective for non-root users, so the lookup succeeds there; Apple container drops them. Locally the same uvicorn from the project venv is started directly, still as appuser."
+          },
+          "cpu": "0.5",
+          "memory": "1Gi",
+          "ephemeralStorage": "2Gi",
+          "volumeMounts": [
+            {
+              "volumeName": "predixlab-data",
+              "mountPath": "/data"
+            }
+          ],
+          "probes": [
+            {
+              "type": "Liveness",
+              "httpGet": {
+                "path": "/health",
+                "port": 8000,
+                "scheme": "HTTP"
+              },
+              "initialDelaySeconds": 0,
+              "periodSeconds": 10
+            },
+            {
+              "type": "Readiness",
+              "tcpSocket": {
+                "port": 8000
+              },
+              "initialDelaySeconds": 0,
+              "periodSeconds": 5,
+              "failureThreshold": 48,
+              "successThreshold": 1,
+              "timeoutSeconds": 5
+            },
+            {
+              "type": "Startup",
+              "tcpSocket": {
+                "port": 8000
+              },
+              "initialDelaySeconds": 1,
+              "periodSeconds": 1,
+              "failureThreshold": 240,
+              "successThreshold": 1,
+              "timeoutSeconds": 3
+            }
+          ],
+          "env": [
+            { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
+            { "name": "DATABASE_NAME", "value": "predixlab" },
+            { "name": "SECRET_KEY", "secret": "jwt-secret-key" },
+            { "name": "SESSION_SECRET_KEY", "secret": "session-secret-key" },
+            { "name": "ALGORITHM", "value": "HS256" },
+            { "name": "ACCESS_TOKEN_EXPIRE_MINUTES", "value": "30" },
+            { "name": "ACS_CONNECTION_STRING", "secret": "acs-connection-string" },
+            { "name": "ACS_SENDER", "value": "notification@predixlab.com" },
+            { "name": "GOOGLE_CLIENT_ID", "secret": "google-oauth-client-id" },
+            { "name": "GOOGLE_CLIENT_SECRET", "secret": "google-oauth-client-secret" },
+            { "name": "MICROSOFT_CLIENT_ID", "secret": "microsoft-oauth-client-id" },
+            { "name": "MICROSOFT_CLIENT_SECRET", "secret": "microsoft-oauth-client-secret" },
+            {
+              "name": "CORS_ORIGINS",
+              "values": {
+                "prod": "[\"https://www.predixlab.com\", \"https://dashboard.predixlab.com\", \"https://predixlab.com\"]",
+                "local": "[\"http://localhost:3000\", \"http://localhost:8080\"]"
+              }
+            },
+            {
+              "name": "GOOGLE_OAUTH_CALLBACK_URL",
+              "values": {
+                "prod": "https://api.predixlab.com/api/v1/auth/google/callback",
+                "local": "http://localhost:8000/api/v1/auth/google/callback"
+              }
+            },
+            {
+              "name": "MICROSOFT_OAUTH_CALLBACK_URL",
+              "values": {
+                "prod": "https://api.predixlab.com/api/v1/auth/microsoft/callback",
+                "local": "http://localhost:8000/api/v1/auth/microsoft/callback"
+              }
+            },
+            {
+              "name": "OAUTH_REDIRECT_URL",
+              "values": {
+                "prod": "https://dashboard.predixlab.com/auth/callback",
+                "local": "http://localhost:3000/auth/callback"
+              }
+            },
+            { "name": "STRIPE_SECRET_KEY", "secret": "stripe-secret-key" },
+            { "name": "STRIPE_PUBLISHABLE_KEY", "secret": "stripe-publishable-key" },
+            { "name": "STRIPE_WEBHOOK_SECRET", "secret": "stripe-webhook-secret" },
+            {
+              "name": "STRIPE_MONTHLY_PRICE_ID",
+              "values": {
+                "prod": "price_1S6ok1ABVO7mgz5TU1zHDMCb",
+                "local": ""
+              }
+            },
+            {
+              "name": "STRIPE_YEARLY_PRICE_ID",
+              "values": {
+                "prod": "price_1S6ok1ABVO7mgz5TbJcwsH4F",
+                "local": ""
+              }
+            },
+            { "name": "STRIPE_TRIAL_PERIOD_DAYS", "value": "30" },
+            { "name": "PREDICTIONS_DIR", "value": "/data/predictions" },
+            { "name": "PICKS_DIR", "value": "/data/picks" },
+            { "name": "US_STOCK_DATA_DIR", "value": "/data/stock_data/us_data" },
+            { "name": "US_CALENDAR_PATH", "value": "/data/calendar/us.txt" },
+            { "name": "US_INDEX_PATH", "value": "/data/instruments/us.txt" },
+            { "name": "REFERRAL_PROGRAM_ENABLED", "value": "true" },
+            {
+              "name": "REFERRAL_FRONTEND_URL",
+              "values": {
+                "prod": "https://dashboard.predixlab.com/register",
+                "local": "http://localhost:3000/register"
+              }
+            },
+            {
+              "name": "EMAIL_BACKEND",
+              "values": {
+                "local": "console"
+              }
+            }
+          ]
+        }
+      ],
+      "local": {
+        "hostPort": 8000,
+        "healthPath": "/health"
+      }
+    }
+  ],
+  "jobs": [
+    {
+      "name": "signal",
+      "azureName": "predixlab-signal",
+      "environment": "worker",
+      "identity": "jobs",
+      "schedule": {
+        "cronExpression": "30 2 * * *",
+        "parallelism": 1,
+        "replicaCompletionCount": 1
+      },
+      "replicaTimeout": 1800,
+      "replicaRetryLimit": 0,
+      "volumes": [
+        {
+          "name": "predixlab-data",
+          "storageName": "predixlab-data"
+        }
+      ],
+      "initContainers": [
+        {
+          "name": "predixlab-collector",
+          "image": "collector",
+          "command": [ "python" ],
+          "args": [ "-m", "predixlab_collector", "update_daily_data" ],
+          "cpu": "0.5",
+          "memory": "1Gi",
+          "volumeMounts": [
+            {
+              "volumeName": "predixlab-data",
+              "mountPath": "/data"
+            }
+          ],
+          "env": [
+            { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
+            { "name": "ACS_CONNECTION_STRING", "secret": "acs-connection-string" },
+            { "name": "ACS_SENDER_EMAIL", "value": "taskmanager@predixlab.com" },
+            { "name": "ACS_TO_EMAILS", "parameter": "alert-recipients" },
+            { "name": "PREDIXLAB_DATA", "value": "/data" },
+            { "name": "DATABASE_NAME", "value": "predixlab" }
+          ]
+        }
+      ],
+      "containers": [
+        {
+          "name": "predixlab-signals",
+          "image": "signals",
+          "cpu": "2",
+          "memory": "4Gi",
+          "volumeMounts": [
+            {
+              "volumeName": "predixlab-data",
+              "mountPath": "/data"
+            }
+          ],
+          "env": [
+            { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
+            { "name": "DATABASE_NAME", "value": "predixlab" },
+            { "name": "ACS_CONNECTION_STRING", "secret": "acs-connection-string" },
+            { "name": "ACS_SENDER_EMAIL", "value": "taskmanager@predixlab.com" },
+            { "name": "ACS_TO_EMAILS", "parameter": "alert-recipients" },
+            { "name": "PREDIXLAB_DATA", "value": "/data" },
+            { "name": "CAMPAIGN_EVENTS_ENABLED", "value": "true" },
+            { "name": "CAMPAIGN_STORAGE_CONNECTION_STRING", "secret": "storage-account-connection-string" },
+            { "name": "CAMPAIGN_EVENTS_QUEUE", "value": "campaign-events" }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "options",
+      "azureName": "predixlab-options",
+      "environment": "worker",
+      "identity": "jobs",
+      "schedule": {
+        "cronExpression": "30 11 * * *",
+        "parallelism": 1,
+        "replicaCompletionCount": 1
+      },
+      "replicaTimeout": 3600,
+      "replicaRetryLimit": 0,
+      "volumes": [
+        {
+          "name": "predixlab-data",
+          "storageName": "predixlab-data"
+        }
+      ],
+      "initContainers": [],
+      "containers": [
+        {
+          "name": "predixlab-options",
+          "image": "options",
+          "command": [ "python" ],
+          "args": [ "-m", "options_monitor", "run_daily_job" ],
+          "cpu": "2",
+          "memory": "4Gi",
+          "volumeMounts": [
+            {
+              "volumeName": "predixlab-data",
+              "mountPath": "/data"
+            }
+          ],
+          "env": [
+            { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
+            { "name": "DATABASE_NAME", "value": "predixlab" },
+            { "name": "ACS_CONNECTION_STRING", "secret": "acs-connection-string" },
+            { "name": "ACS_SENDER_EMAIL", "value": "taskmanager@predixlab.com" },
+            { "name": "ACS_TO_EMAILS", "parameter": "alert-recipients" },
+            { "name": "OPTIONS_DATA_DIR", "value": "/data/options_data" },
+            { "name": "ANOMALIES_DATA_DIR", "value": "/data/options_anomalies" },
+            { "name": "INSTRUMENTS_FILE", "value": "/data/instruments/us.txt" },
+            { "name": "CALENDAR_FILE", "value": "/data/calendar/us.txt" },
+            { "name": "ACTIVE_STOCKS_FILE", "value": "/data/instruments/active_stocks.txt" },
+            { "name": "ANOMALY_MIN_SCORE", "value": "50" },
+            { "name": "OPTIONS_FETCH_WORKERS", "value": "1" },
+            { "name": "OPTIONS_FETCH_REQUESTS_PER_SECOND", "value": "0.8" },
+            { "name": "OPTIONS_ANALYSIS_WORKERS", "value": "6" },
+            { "name": "OPTIONS_PROGRESS_LOG_INTERVAL", "value": "25" },
+            { "name": "LOG_LEVEL", "value": "INFO" },
+            { "name": "OPTIONS_FETCH_MAX_RETRIES", "value": "4" },
+            { "name": "OPTIONS_FETCH_RETRY_BASE_SECONDS", "value": "5" },
+            { "name": "OPTIONS_FETCH_RETRY_MAX_SECONDS", "value": "60" },
+            { "name": "OPTIONS_FETCH_REQUEST_DELAY_SECONDS", "value": "0.5" }
+          ]
+        }
+      ]
+    }
+  ],
+  "functionApps": [
+    {
+      "name": "campaign",
+      "azureName": "predixlab-campaign",
+      "linuxFxVersion": "Python|3.12",
+      "functionAppScaleLimit": 200,
+      "source": {
+        "repo": "predixlab-campaign",
+        "requirements": "requirements.txt",
+        "ignoreFile": ".funcignore"
+      },
+      "settings": [
+        { "name": "FUNCTIONS_WORKER_RUNTIME", "value": "python" },
+        { "name": "FUNCTIONS_EXTENSION_VERSION", "value": "~4" },
+        { "name": "AzureWebJobsStorage", "secret": "storage-account-connection-string" },
+        { "name": "AzureWebJobsFeatureFlags", "value": "EnableWorkerIndexing" },
+        { "name": "CAMPAIGN_EVENTS_QUEUE", "value": "campaign-events" },
+        { "name": "CAMPAIGN_DELIVERY_QUEUE", "value": "campaign-delivery" },
+        {
+          "name": "CAMPAIGN_DELIVERY_BACKEND",
+          "values": {
+            "prod": "acs",
+            "local": "console"
+          }
+        },
+        { "name": "CAMPAIGN_DELIVERIES_COLLECTION", "value": "campaign_deliveries" },
+        { "name": "CAMPAIGN_DELIVERY_LEASE_SECONDS", "value": "300" },
+        { "name": "CAMPAIGN_APP_NAME", "value": "PredixLab" },
+        { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
+        { "name": "DATABASE_NAME", "value": "predixlab" },
+        { "name": "USERS_COLLECTION", "value": "users" },
+        { "name": "PIVOT_PICKS_COLLECTION", "value": "pivot_picks" },
+        { "name": "ALPHARANK_COLLECTION", "value": "alpharank" },
+        { "name": "ALPHARANK_GENERATIONS_COLLECTION", "value": "alpharank_generations" },
+        { "name": "ACS_CONNECTION_STRING", "secret": "acs-connection-string" },
+        { "name": "ACS_SENDER", "value": "notification@predixlab.com" },
+        {
+          "name": "PUBLIC_API_URL",
+          "values": {
+            "prod": "https://api.predixlab.com",
+            "local": "http://localhost:8000"
+          }
+        },
+        { "name": "SECRET_KEY", "secret": "jwt-secret-key" }
+      ],
+      "local": {
+        "cpu": "1",
+        "memory": "1536Mi",
+        "platform": "linux/amd64",
+        "baseImage": "mcr.microsoft.com/azure-functions/python:4-python3.12"
+      }
+    }
+  ],
+  "staticSites": [
+    {
+      "name": "dashboard",
+      "azureName": "predixlab-dashboard",
+      "location": "westus2",
+      "sku": "Free",
+      "repositoryUrl": "https://github.com/predixlab/predixlab-webapp",
+      "branch": "main",
+      "customDomains": [
+        "dashboard.predixlab.com"
+      ],
+      "source": {
+        "repo": "predixlab-dashboard",
+        "appLocation": "/",
+        "outputLocation": "dist",
+        "configFile": "staticwebapp.config.json"
+      },
+      "buildEnv": [],
+      "local": {
+        "hostPort": 3000,
+        "originRewrites": [
+          { "from": "https://api.predixlab.com", "to": "api" },
+          { "from": "https://predixlab.com", "to": "portal" }
+        ]
+      }
+    },
+    {
+      "name": "portal",
+      "azureName": "predixlab-portal",
+      "location": "westus2",
+      "sku": "Free",
+      "repositoryUrl": "https://github.com/predixlab/predixlab-portal",
+      "branch": "main",
+      "customDomains": [
+        "www.predixlab.com",
+        "predixlab.com"
+      ],
+      "source": {
+        "repo": "predixlab-portal",
+        "appLocation": "/",
+        "outputLocation": "dist",
+        "configFile": "staticwebapp.config.json"
+      },
+      "buildEnv": [
+        {
+          "name": "VITE_GA_MEASUREMENT_ID",
+          "values": {
+            "local": ""
+          },
+          "note": "Production reads the GitHub Actions secret VITE_GA_MEASUREMENT_ID; staging never reports to the production GA4 property."
+        }
+      ],
+      "local": {
+        "hostPort": 8080,
+        "originRewrites": [
+          { "from": "https://dashboard.predixlab.com", "to": "dashboard" }
+        ]
+      }
+    }
+  ],
+  "local": {
+    "network": {
+      "name": "predixlab-staging",
+      "subnet": "192.168.207.0/24"
+    },
+    "emulators": {
+      "mongodb": {
+        "image": "docker.io/library/mongo:7.0",
+        "port": 27017,
+        "emulates": "Azure Cosmos DB for MongoDB (serverVersion 7.0, database predixlab)"
+      },
+      "azurite": {
+        "image": "mcr.microsoft.com/azure-storage/azurite:3.37.0",
+        "ports": {
+          "blob": 10000,
+          "queue": 10001,
+          "table": 10002
+        },
+        "emulates": "Storage account predixlabstorage (queues campaign-events and campaign-delivery; blob storage for Functions host leases)"
+      }
+    },
+    "catchUpMinutes": 180
+  }
+}

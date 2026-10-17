@@ -1,0 +1,41 @@
+name: Azure infrastructure
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: what-if or deploy
+        required: true
+        default: what-if
+        type: choice
+        options: [what-if, deploy]
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: predixlab-infra-production
+  cancel-in-progress: false
+
+jobs:
+  azure:
+    runs-on: ubuntu-latest
+    # Requires a federated credential for this repository on an identity with
+    # Contributor on the resource group and Key Vault Secrets User on predixlab-kv.
+    environment: production
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Install Bicep
+        run: az bicep install
+      - name: What-if
+        if: inputs.action == 'what-if'
+        run: azure/scripts/deploy.sh what-if
+      - name: Deploy
+        if: inputs.action == 'deploy'
+        run: azure/scripts/deploy.sh deploy --yes

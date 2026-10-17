@@ -1,0 +1,19 @@
+# Local stand-in for an Azure Functions (Linux Consumption, Python) app.
+#
+# Mirrors the CI deployment of the Function App: the repository content minus
+# .funcignore entries (staged by `plx build`) plus dependencies installed into
+# .python_packages/lib/site-packages, running on the official Functions host.
+ARG BASE_IMAGE=mcr.microsoft.com/azure-functions/python:4-python3.12
+FROM ${BASE_IMAGE}
+
+ARG REQUIREMENTS=requirements.txt
+
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true \
+    FUNCTIONS_WORKER_RUNTIME=python
+
+COPY . /home/site/wwwroot
+
+RUN python -m pip install --disable-pip-version-check --no-cache-dir \
+      --target=/home/site/wwwroot/.python_packages/lib/site-packages \
+      -r /home/site/wwwroot/${REQUIREMENTS}
