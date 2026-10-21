@@ -82,6 +82,11 @@ param githubFederatedCredentials = [
     name: 'predixlab-api-fed'
     subject: 'repo:predixlab@312333614/predixlab-api@1322549087:ref:refs/heads/main'
   }
+  {
+    identity: 'api'
+    name: 'predixlab-api-env-production'
+    subject: 'repo:predixlab@312333614/predixlab-api@1322549087:environment:production'
+  }
 ]
 
 param emailSenders = [
