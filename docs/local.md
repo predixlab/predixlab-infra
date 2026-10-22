@@ -6,9 +6,9 @@ The local staging environment runs the platform workloads with Apple's `containe
 
 See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. `PLX_WORKSPACE` overrides the default sibling workspace. Without `predixlab-collector` and `predixlab-options` in that workspace, `./plx doctor` reports `FAIL` for `image collector` and `image options` and exits 1 even if all other checks pass. `./plx build collector options` fails with missing-repository errors and exits 1. A bare `./plx build` attempts every target, continues after failures, and exits 1 with collector and options reported as failed.
 
-Use `./plx build api signals campaign dashboard portal` for the public targets. Per the code, each builds from its own repository without depending on the collector/options repositories, and the api, campaign, dashboard and portal services do not use those images.
+Use `./plx build api signals campaign dashboard portal` for the public targets. Each builds from its own repository without depending on the collector/options repositories, and the api, campaign, dashboard and portal services do not use those images.
 
-Per the code, the full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the `predixlab-collector` and `predixlab-options` repositories, respectively, which aren't in the public repositories, or use `./plx pull-prod collector` and `./plx pull-prod options` with separately authorized registry access. Also per the code, `./plx job run signal --skip-init` skips the collector init container and runs only the signals container; input data must already be present in `~/.predixlab` (or `PLX_DATA_DIR`), with models under that directory's `models/us/`.
+The full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the collector and options repositories, which aren't public. `./plx job run signal --skip-init` skips the collector init container and runs only the signals container; input data must already be present in `~/.predixlab` (or `PLX_DATA_DIR`), with models under that directory's `models/us/`.
 
 ## Components
 
