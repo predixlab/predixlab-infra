@@ -87,7 +87,7 @@ Existing raw data in `~/.predixlab` is available directly to the API and job con
 | Difference | Reason |
 | --- | --- |
 | Endpoints: api/dashboard/portal → `localhost:8000/3000/8080`; CORS, OAuth callbacks and referral links follow | `values.local`; see `./plx diff` |
-| Secrets: MongoDB and Storage point to local emulators; independent JWT and session keys are generated locally; ACS, OAuth, and Stripe are empty by default | Isolates staging from production services; use Stripe test-mode keys only |
+| Secrets: MongoDB and Storage point to local emulators; independent JWT, unsubscribe, and session keys are generated locally; ACS, OAuth, and Stripe are empty by default | Isolates staging from production services; use Stripe test-mode keys only |
 | `EMAIL_BACKEND=console` (API) and `CAMPAIGN_DELIVERY_BACKEND=console` (campaign) | Never email real users |
 | Stripe price IDs are empty locally | Configure test prices in `config.json` to exercise billing flows |
 | Frontend production origins are rewritten during local builds (`originRewrites`) | Directs Dashboard and Portal requests to local endpoints |
@@ -97,6 +97,8 @@ Existing raw data in `~/.predixlab` is available directly to the API and job con
 | The SWA emulator redirects paths without a trailing slash with 301 (production returns 200) | Static Web Apps CLI emulator behavior |
 
 The collector and signals run in separate containers within the `signal` job. Collector runs first as the init container; signals starts after collection succeeds. Both mount the same raw data directory at `/data`.
+
+The `unsubscribe-secret` catalog entry maps to Key Vault secret `campaign-unsubscribe-signing-key`. API and campaign must share it as `UNSUBSCRIBE_SECRET` to sign and verify unsubscribe links. Locally, both use the same independently generated key; rerun `./plx init` to add it to an existing staging environment without replacing other keys. See [Azure secrets](docs/azure.md#secrets) for the runtime identities and reference formats.
 
 ## Common commands
 

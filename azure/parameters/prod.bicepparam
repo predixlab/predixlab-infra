@@ -131,7 +131,8 @@ param deployRoleAssignments = false
 param campaignDeployPrincipalId = readEnvironmentVariable('PLX_CAMPAIGN_DEPLOY_PRINCIPAL_ID', '')
 param configureFileShareBackup = false
 
-// The Function App keeps literal app settings; values come from Key Vault at deployment time.
+// Existing secret settings remain literal values read at deployment time.
+// UNSUBSCRIBE_SECRET is a runtime Key Vault reference defined in platform.json.
 param mongoConnectionString = az.getSecret(subscriptionId, 'predixlab', 'predixlab-kv', 'predixlab-mongodb-connection-string')
 param acsConnectionString = az.getSecret(subscriptionId, 'predixlab', 'predixlab-kv', 'predixlab-acs-connection-string')
 param jwtSecretKey = az.getSecret(subscriptionId, 'predixlab', 'predixlab-kv', 'jwt-secret-key')

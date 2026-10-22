@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import sys
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -76,6 +78,65 @@ class PlatformFileTests(unittest.TestCase):
             env = {entry.name: entry for entry in entries_for(api["env"], environment)}
             self.assertEqual(env["SESSION_SECRET_KEY"].secret, "session-secret-key")
             self.assertNotEqual(env["SESSION_SECRET_KEY"].secret, env["SECRET_KEY"].secret)
+
+    def test_api_and_campaign_share_independent_unsubscribe_secret(self) -> None:
+        catalog = self.platform.secrets["unsubscribe-secret"]
+        self.assertEqual(catalog["keyVaultSecret"], "campaign-unsubscribe-signing-key")
+        self.assertEqual(catalog["local"], "generated")
+        api = self.platform.container_apps[0]
+        self.assertEqual(api["identity"], "api")
+        settings = self.platform.function_apps[0]["settings"]
+        self.assertEqual(next(entry for entry in settings if entry["name"] == "UNSUBSCRIBE_SECRET"), {
+            "name": "UNSUBSCRIBE_SECRET", "keyVaultReference": "unsubscribe-secret",
+        })
+        for environment in ("prod", "local"):
+            env = {entry.name: entry for entry in entries_for(api["containers"][0]["env"], environment)}
+            campaign = {entry.name: entry for entry in entries_for(settings, environment)}
+            self.assertEqual(env["UNSUBSCRIBE_SECRET"].secret, "unsubscribe-secret")
+            self.assertEqual(campaign["UNSUBSCRIBE_SECRET"].secret, env["UNSUBSCRIBE_SECRET"].secret)
+            self.assertNotEqual(env["UNSUBSCRIBE_SECRET"].secret, env["SECRET_KEY"].secret)
+            self.assertNotEqual(env["UNSUBSCRIBE_SECRET"].secret, env["SESSION_SECRET_KEY"].secret)
+
+    def test_existing_campaign_secret_settings_remain_literal_secrets(self) -> None:
+        settings = {entry["name"]: entry for entry in self.platform.function_apps[0]["settings"]}
+        for name, secret in {
+            "AzureWebJobsStorage": "storage-account-connection-string",
+            "MONGODB_URL": "mongodb-connection-string",
+            "ACS_CONNECTION_STRING": "acs-connection-string",
+            "SECRET_KEY": "jwt-secret-key",
+        }.items():
+            self.assertEqual(settings[name], {"name": name, "secret": secret})
+        self.assertEqual(
+            [entry["name"] for entry in settings.values() if "keyVaultReference" in entry],
+            ["UNSUBSCRIBE_SECRET"],
+        )
+
+    def test_key_vault_reference_validation(self) -> None:
+        for reference, extra, expected in (
+            ("not-declared", {}, "references unknown secret 'not-declared'"),
+            ("unsubscribe-secret", {"secret": "jwt-secret-key"}, "needs exactly one of"),
+        ):
+            with self.subTest(reference=reference, extra=extra):
+                data = json.loads(json.dumps(self.platform.data))
+                data["functionApps"][0]["settings"].append({
+                    "name": "INVALID", "keyVaultReference": reference, **extra,
+                })
+                self.assertTrue(any(expected in problem for problem in Platform(data).validate()))
+        data = json.loads(json.dumps(self.platform.data))
+        data["containerApps"][0]["containers"][0]["env"].append({
+            "name": "INVALID", "keyVaultReference": "unsubscribe-secret",
+        })
+        self.assertTrue(any("uses keyVaultReference outside a Function App" in problem for problem in Platform(data).validate()))
+
+    def test_key_vault_reference_schema_is_function_app_only(self) -> None:
+        schema = json.loads((ROOT / "config" / "platform.schema.json").read_text(encoding="utf-8"))
+        self.assertNotIn("keyVaultReference", schema["$defs"]["envEntry"]["properties"])
+        kinds = schema["$defs"]["functionSetting"]["oneOf"]
+        self.assertEqual(kinds[0], {"$ref": "#/$defs/envEntry"})
+        self.assertEqual(kinds[1]["required"], ["name", "keyVaultReference"])
+        self.assertFalse(kinds[1]["additionalProperties"])
+        self.assertEqual(schema["properties"]["functionApps"]["items"]["properties"]["settings"]["items"],
+                         {"$ref": "#/$defs/functionSetting"})
 
     def test_static_site_rewrites_reference_local_endpoints(self) -> None:
         endpoints = self.platform.endpoints("local")
@@ -170,6 +231,14 @@ class ConversionTests(unittest.TestCase):
     def test_parameter_environment_name(self) -> None:
         self.assertEqual(parameter_env_name("alert-recipients"), "PLX_PARAM_ALERT_RECIPIENTS")
 
+    def test_key_vault_reference_selects_a_local_secret(self) -> None:
+        for environment in ("prod", "local"):
+            with self.subTest(environment=environment):
+                entries = entries_for([{"name": "UNSUBSCRIBE_SECRET", "keyVaultReference": "unsubscribe-secret"}], environment)
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(entries[0].secret, "unsubscribe-secret")
+                self.assertIsNone(entries[0].value)
+
     def test_local_command_override(self) -> None:
         self.assertEqual(container_command({"command": ["python"], "args": ["-m", "x"]}), (["python"], ["-m", "x"]))
         self.assertEqual(container_command({"command": ["uv"], "local": {"command": ["/app/.venv/bin/uvicorn", "a"]}}), (["/app/.venv/bin/uvicorn", "a"], []))
@@ -222,12 +291,15 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual(len(api_env["SESSION_SECRET_KEY"]), 64)
         self.assertNotEqual(api_env["SESSION_SECRET_KEY"], api_env["SECRET_KEY"])
         self.assertEqual(api_env["SECRET_KEY"], campaign_env["SECRET_KEY"])
+        self.assertEqual(len(api_env["UNSUBSCRIBE_SECRET"]), 64)
+        self.assertEqual(api_env["UNSUBSCRIBE_SECRET"], campaign_env["UNSUBSCRIBE_SECRET"])
+        self.assertEqual(len({api_env[name] for name in ("SECRET_KEY", "SESSION_SECRET_KEY", "UNSUBSCRIBE_SECRET")}), 3)
         self.assertNotIn("SESSION_SECRET_KEY", campaign_env)
 
     def test_generated_secrets_are_stable_and_private(self) -> None:
         first = self._resolver()
         second = self._resolver()
-        for key in ("jwt-secret-key", "session-secret-key"):
+        for key in ("jwt-secret-key", "session-secret-key", "unsubscribe-secret"):
             self.assertEqual(first.secret(key), second.secret(key))
         self.assertEqual(self.home.secrets_file.stat().st_mode & 0o777, 0o600)
 
@@ -240,6 +312,49 @@ class ResolverTests(unittest.TestCase):
         self.assertEqual(resolver.secret("jwt-secret-key"), existing_key)
         self.assertEqual(len(resolver.secret("session-secret-key")), 64)
         self.assertNotEqual(resolver.secret("session-secret-key"), existing_key)
+
+    def test_initialization_adds_unsubscribe_secret_without_replacing_existing_keys(self) -> None:
+        existing = {
+            "jwt-secret-key": "existing-local-jwt-key",
+            "session-secret-key": "existing-local-session-key",
+            "stripe-secret-key": "existing-local-test-stripe-key",
+        }
+        self.home.secrets_file.write_text("".join(f"{key}={value}\n" for key, value in existing.items()))
+        resolver = self._resolver()
+        for key, value in existing.items():
+            self.assertEqual(resolver.secret(key), value)
+        self.assertEqual(len(resolver.secret("unsubscribe-secret")), 64)
+        self.assertNotIn(resolver.secret("unsubscribe-secret"), existing.values())
+
+    def test_key_vault_reference_uses_explicit_local_value(self) -> None:
+        self.home.secrets_file.write_text("unsubscribe-secret=existing-local-unsubscribe-key\n")
+        resolver = self._resolver()
+        for workload, entries in (
+            ("api", self.platform.container_apps[0]["containers"][0]["env"]),
+            ("campaign", self.platform.function_apps[0]["settings"]),
+        ):
+            self.assertEqual(resolver.env(entries, workload)["UNSUBSCRIBE_SECRET"], "existing-local-unsubscribe-key")
+
+    def test_key_vault_reference_requires_local_initialization(self) -> None:
+        resolver = Resolver(self.platform, LocalConfig(self.platform, self.home),
+                            SecretStore(self.home.secrets_file), "192.168.207.1", lambda: "192.168.207.2")
+        with self.assertRaisesRegex(KeyError, "unsubscribe-secret.*run `plx init`"):
+            resolver.env([{"name": "UNSUBSCRIBE_SECRET", "keyVaultReference": "unsubscribe-secret"}], "campaign")
+
+    def test_plx_env_masks_unsubscribe_secret_for_both_workloads(self) -> None:
+        resolver = self._resolver()
+        ctx = SimpleNamespace(platform=self.platform, resolver=resolver)
+        for workload in ("api", "campaign"):
+            for show_secrets in (False, True):
+                with self.subTest(workload=workload, show_secrets=show_secrets):
+                    output = io.StringIO()
+                    args = SimpleNamespace(workload=workload, container=None, show_secrets=show_secrets)
+                    with redirect_stdout(output):
+                        self.assertEqual(cli.cmd_env(ctx, args), 0)
+                    expected = resolver.secret("unsubscribe-secret") if show_secrets else "<secret>"
+                    self.assertIn(f"UNSUBSCRIBE_SECRET={expected}\n", output.getvalue())
+                    if not show_secrets:
+                        self.assertNotIn(resolver.secret("unsubscribe-secret"), output.getvalue())
 
     def test_mongodb_address_is_resolved_for_each_new_container(self) -> None:
         address = ["192.168.207.2"]
@@ -262,12 +377,46 @@ class BicepParityTests(unittest.TestCase):
     def test_bicep_functions_follow_the_same_entry_rules(self) -> None:
         source = (ROOT / "azure" / "modules" / "platform-functions.bicep").read_text(encoding="utf-8")
         self.assertIn(
-            "contains(entry, 'secret') || contains(entry, 'value') || contains(entry, 'parameter') "
+            "contains(entry, 'secret') || contains(entry, 'keyVaultReference') || contains(entry, 'value') || contains(entry, 'parameter') "
             "|| contains(entry.?values ?? {}, environmentName)",
             source,
         )
         self.assertIn("contains(entry, 'parameter') ? parameterValues[entry.parameter]", source)
         self.assertIn("loadJsonContent('../config/platform.json')", (ROOT / "azure" / "main.bicep").read_text(encoding="utf-8"))
+
+    def test_function_app_renders_versionless_key_vault_reference_and_preserves_literal_settings(self) -> None:
+        source = (ROOT / "azure" / "modules" / "function-app.bicep").read_text(encoding="utf-8")
+        self.assertIn("filter(functionApp.settings, entry => appliesTo(entry, environmentName))", source)
+        self.assertIn(
+            "value: contains(entry, 'keyVaultReference')\n"
+            "      ? '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/${secretCatalog[entry.keyVaultReference].keyVaultSecret}/)'\n"
+            "      : (contains(entry, 'secret') ? resolvedSecrets[entry.secret] : envValue(entry, environmentName, parameterValues))",
+            source,
+        )
+        self.assertIn("'storage-account-connection-string': storageConnectionString", source)
+        self.assertIn("identity: {\n    type: 'SystemAssigned'\n  }", source)
+        self.assertIn("keyVaultReferenceIdentity: 'SystemAssigned'", source)
+        self.assertIn("output principalId string = site.identity.principalId", source)
+        main = (ROOT / "azure" / "main.bicep").read_text(encoding="utf-8")
+        function_module = main.split("module functionApps ", 1)[1].split("module staticSites ", 1)[0]
+        self.assertIn("keyVaultUri: keyVaultUri", function_module)
+        self.assertIn("secretCatalog: platform.secrets", function_module)
+
+    def test_function_app_vault_role_is_gated_and_depends_on_its_identity(self) -> None:
+        main = (ROOT / "azure" / "main.bicep").read_text(encoding="utf-8")
+        self.assertIn("param deployRoleAssignments bool = false", main)
+        self.assertIn("module roleAssignments 'modules/role-assignments.bicep' = if (deployRoleAssignments)", main)
+        self.assertIn("functionAppName: functionApps[0].outputs.name", main)
+        self.assertIn("functionAppPrincipalId: functionApps[0].outputs.principalId", main)
+        source = (ROOT / "azure" / "modules" / "role-assignments.bicep").read_text(encoding="utf-8")
+        assignment = source.split("resource functionSecretsUser ", 1)[1].split("resource certificateUser ", 1)[0]
+        self.assertIn("name: guid(vault.id, functionAppPrincipalId, roles.keyVaultSecretsUser)", assignment)
+        self.assertIn("scope: vault", assignment)
+        self.assertIn("principalId: functionAppPrincipalId", assignment)
+        self.assertIn("principalType: 'ServicePrincipal'", assignment)
+        self.assertIn("roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsUser)", assignment)
+        prod = (ROOT / "azure" / "parameters" / "prod.bicepparam").read_text(encoding="utf-8")
+        self.assertIn("param deployRoleAssignments = false", prod)
 
 
 if __name__ == "__main__":

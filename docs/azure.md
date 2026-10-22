@@ -16,12 +16,12 @@ The Bicep templates provision the PredixLab platform in the `predixlab` resource
 | `container-apps-environment.bicep` | `predixlab-container-api-server-environment` (storages `predixlab-data` read-only and `predixlab-data-rw` read-write, managed certificate for `api.predixlab.com`) and `predixlab-container-worker-environment` (storage `predixlab-data` read-write, identity `predixlab-kv-oidc`) |
 | `container-app.bicep` | `predixlab-api` (external ingress on port 8000, custom domain, probes, 1–10 replicas, Key Vault secret references) |
 | `container-apps-job.bicep` | `predixlab-signal` and `predixlab-options` (schedule triggers; images are pulled with the environment's system-assigned identity) |
-| `function-app.bicep` | Linux Consumption plan `WestUSLinuxDynamicPlan` (Y1) and `predixlab-campaign` (Python 3.12) |
+| `function-app.bicep` | Linux Consumption plan `WestUSLinuxDynamicPlan` (Y1) and `predixlab-campaign` (Python 3.12, system-assigned identity for runtime Key Vault references) |
 | `static-web-app.bicep` | `predixlab-dashboard` and `predixlab-portal` (Free, westus2, custom domains) |
 | `backup.bicep` | Recovery Services vault and the daily (19:30 UTC, 30-day retention) backup policy for the `predixlab-data` share |
 | `role-assignments.bicep` | Optional Key Vault, AcrPull, and deployment role assignments, enabled by `deployRoleAssignments` |
 
-The API, jobs, and Function App settings are defined in [`config/platform.json`](../config/platform.json) and translated into ARM resources by [`platform-functions.bicep`](../azure/modules/platform-functions.bicep). Environment entries support `value` (shared), `values.prod` (production-specific), `secret` (Key Vault-backed), and `parameter` (deployment-time input). Container Apps use Key Vault references; the Function App receives its required Key Vault values during deployment.
+The API, jobs, and Function App settings are defined in [`config/platform.json`](../config/platform.json) and translated into ARM resources by the Bicep modules and [`platform-functions.bicep`](../azure/modules/platform-functions.bicep). Environment entries support `value` (shared), `values.prod` (production-specific), `secret` (Key Vault-backed), and `parameter` (deployment-time input). Container Apps use Key Vault references. Function App `secret` settings remain literal values read during deployment; its Function-App-only `keyVaultReference` setting kind instead renders a runtime reference using the secret catalog.
 
 ### Resource ownership
 
@@ -62,9 +62,11 @@ The script retains live image tags for the API and signals workloads and the cam
 
 Key Vault must contain these secrets:
 
-`predixlab-mongodb-connection-string`, `predixlab-storage-account-connection-string`, `predixlab-acs-connection-string`, `jwt-secret-key`, `session-secret-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `microsoft-oauth-client-id`, `microsoft-oauth-client-secret`, `stripe-secret-key`, `stripe-publishable-key`, `stripe-webhook-secret`
+`predixlab-mongodb-connection-string`, `predixlab-storage-account-connection-string`, `predixlab-acs-connection-string`, `jwt-secret-key`, `campaign-unsubscribe-signing-key`, `session-secret-key`, `google-oauth-client-id`, `google-oauth-client-secret`, `microsoft-oauth-client-id`, `microsoft-oauth-client-secret`, `stripe-secret-key`, `stripe-publishable-key`, `stripe-webhook-secret`
 
 The `secrets` catalog in [`config/platform.json`](../config/platform.json) defines their purposes. The Function App uses literal `MONGODB_URL`, `ACS_CONNECTION_STRING`, and `SECRET_KEY` settings resolved from `predixlab-kv` at deployment time with `az.getSecret()`. Its storage connection string uses `listKeys()`. Container Apps and jobs use managed-identity Key Vault references. Deployment-specific parameters are marked secure in Bicep.
+
+The catalog entry `unsubscribe-secret` maps to Key Vault secret `campaign-unsubscribe-signing-key`. Both API and campaign must receive the same value as `UNSUBSCRIBE_SECRET` so the API can verify campaign unsubscribe links; keep it independent of `jwt-secret-key` and `session-secret-key`. The API uses the versionless Key Vault URL `https://predixlab-kv.vault.azure.net/secrets/campaign-unsubscribe-signing-key` with its existing user-assigned `api` identity. Campaign uses exactly `@Microsoft.KeyVault(SecretUri=https://predixlab-kv.vault.azure.net/secrets/campaign-unsubscribe-signing-key/)`, with a trailing slash and `keyVaultReferenceIdentity: SystemAssigned`. This preserves the configuration already set in production without changing other app settings. For a fresh environment, provision this secret and enable `deployRoleAssignments` to grant the Function App's system-assigned principal `Key Vault Secrets User` on the vault after the identity exists. Production keeps that flag false because Ops already created the equivalent assignment under a different name.
 
 Before deploying the updated API, create `session-secret-key` in Key Vault using an independent high-entropy value, such as 32 random bytes encoded as 64 hex characters. The API receives it as required `SESSION_SECRET_KEY`; do not reuse `jwt-secret-key`. Keep the value consistent across replicas. Rotating it invalidates existing session cookies, including those signed with the retired hardcoded key, so complete the rollout across all replicas and restart in-progress OAuth sign-ins. The API has no default or legacy-key fallback.
 

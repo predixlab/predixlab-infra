@@ -32,6 +32,8 @@ def entries_for(entries: list[dict[str, Any]], environment: str = ENVIRONMENT) -
     for entry in entries:
         if "secret" in entry:
             selected.append(EnvEntry(entry["name"], secret=entry["secret"]))
+        elif "keyVaultReference" in entry:
+            selected.append(EnvEntry(entry["name"], secret=entry["keyVaultReference"]))
         elif "value" in entry:
             selected.append(EnvEntry(entry["name"], value=str(entry["value"])))
         elif "parameter" in entry:
@@ -168,14 +170,17 @@ class Platform:
             entries = [entry for container in containers for entry in container.get("env", [])]
             entries += workload.get("settings", []) + workload.get("buildEnv", [])
             for entry in entries:
-                keys = {"value", "secret", "parameter", "values"} & set(entry)
+                keys = {"value", "secret", "keyVaultReference", "parameter", "values"} & set(entry)
                 if len(keys) != 1:
                     problems.append(
                         f"{workload['name']}: env {entry.get('name')!r} needs exactly one of "
-                        "value/secret/parameter/values"
+                        "value/secret/keyVaultReference/parameter/values"
                     )
-                if "secret" in entry and entry["secret"] not in self.secrets:
-                    problems.append(f"{workload['name']}: env {entry['name']!r} references unknown secret {entry['secret']!r}")
+                for source in ("secret", "keyVaultReference"):
+                    if source in entry and entry[source] not in self.secrets:
+                        problems.append(f"{workload['name']}: env {entry['name']!r} references unknown secret {entry[source]!r}")
+                if "keyVaultReference" in entry and kind != "functionApp":
+                    problems.append(f"{workload['name']}: env {entry['name']!r} uses keyVaultReference outside a Function App")
                 if "parameter" in entry and entry["parameter"] not in self.parameters:
                     problems.append(
                         f"{workload['name']}: env {entry['name']!r} references unknown parameter {entry['parameter']!r}"

@@ -28,6 +28,24 @@
       ],
       "additionalProperties": false
     },
+    "functionSetting": {
+      "oneOf": [
+        { "$ref": "#/$defs/envEntry" },
+        {
+          "type": "object",
+          "required": ["name", "keyVaultReference"],
+          "properties": {
+            "name": { "type": "string" },
+            "keyVaultReference": {
+              "type": "string",
+              "description": "Key of the secrets catalog. Function App only: rendered as @Microsoft.KeyVault(SecretUri=<vaultUri>secrets/<keyVaultSecret>/), versionless with a trailing slash, resolved at runtime using the system-assigned identity. Locally resolves to the catalog's local secret value and is masked like secret entries."
+            },
+            "note": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
     "container": {
       "type": "object",
       "required": ["name", "image", "cpu", "memory", "env"],
@@ -172,7 +190,7 @@
         "type": "object",
         "required": ["name", "azureName", "linuxFxVersion", "source", "settings", "local"],
         "properties": {
-          "settings": { "type": "array", "items": { "$ref": "#/$defs/envEntry" } }
+          "settings": { "type": "array", "items": { "$ref": "#/$defs/functionSetting" } }
         }
       }
     },

@@ -12,6 +12,9 @@ param environmentPrincipalIds array
 
 param functionAppName string
 
+@description('System-assigned principal ID output by the Function App module.')
+param functionAppPrincipalId string
+
 @description('GitHub deployment service principal for the Function App; empty to skip.')
 @secure()
 param campaignDeployPrincipalId string = ''
@@ -48,6 +51,16 @@ resource secretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
     }
   }
 ]
+
+resource functionSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(vault.id, functionAppPrincipalId, roles.keyVaultSecretsUser)
+  scope: vault
+  properties: {
+    principalId: functionAppPrincipalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', roles.keyVaultSecretsUser)
+  }
+}
 
 resource certificateUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = [
   for identity in identityPrincipals: {
