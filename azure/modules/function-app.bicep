@@ -13,13 +13,18 @@ param appInsightsConnectionString string
 param appInsightsId string
 param storageAccountName string
 param contentShareName string
+param keyVaultUri string
+
+// Only Key Vault secret names, never values.
+#disable-next-line secure-secrets-in-params
+param secretCatalog object
 
 @secure()
 @description('WEBSITE_RUN_FROM_PACKAGE currently set by the Function App CI; empty to omit.')
 param runFromPackage string = ''
 
 @secure()
-@description('Secret values keyed by secret catalog name (the Function App uses literal app settings).')
+@description('Deploy-time values for literal secret settings, keyed by secret catalog name; keyVaultReference settings resolve at runtime.')
 param secretValues object
 
 @description('Deployment parameter values keyed by config/platform.json parameter name.')
@@ -63,7 +68,9 @@ var workloadSettings = map(
   filter(functionApp.settings, entry => appliesTo(entry, environmentName)),
   entry => {
     name: entry.name
-    value: contains(entry, 'secret') ? resolvedSecrets[entry.secret] : envValue(entry, environmentName, parameterValues)
+    value: contains(entry, 'keyVaultReference')
+      ? '@Microsoft.KeyVault(SecretUri=${keyVaultUri}secrets/${secretCatalog[entry.keyVaultReference].keyVaultSecret}/)'
+      : (contains(entry, 'secret') ? resolvedSecrets[entry.secret] : envValue(entry, environmentName, parameterValues))
   }
 )
 
@@ -93,11 +100,15 @@ resource site 'Microsoft.Web/sites@2024-04-01' = {
   name: functionApp.azureName
   location: location
   kind: 'functionapp,linux'
+  identity: {
+    type: 'SystemAssigned'
+  }
   tags: {
     'hidden-link: /app-insights-resource-id': appInsightsId
   }
   properties: {
     serverFarmId: plan.id
+    keyVaultReferenceIdentity: 'SystemAssigned'
     reserved: true
     httpsOnly: false
     clientAffinityEnabled: false
@@ -115,4 +126,5 @@ resource site 'Microsoft.Web/sites@2024-04-01' = {
 }
 
 output name string = site.name
+output principalId string = site.identity.principalId
 output defaultHostName string = site.properties.defaultHostName

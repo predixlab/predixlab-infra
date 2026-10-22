@@ -81,7 +81,12 @@
     },
     "jwt-secret-key": {
       "keyVaultSecret": "jwt-secret-key",
-      "description": "JWT and unsubscribe-link signing key shared by API and campaign",
+      "description": "JWT signing key shared by API and campaign",
+      "local": "generated"
+    },
+    "unsubscribe-secret": {
+      "keyVaultSecret": "campaign-unsubscribe-signing-key",
+      "description": "Independent unsubscribe-link signing key shared by API and campaign",
       "local": "generated"
     },
     "session-secret-key": {
@@ -213,6 +218,7 @@
             { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
             { "name": "DATABASE_NAME", "value": "predixlab" },
             { "name": "SECRET_KEY", "secret": "jwt-secret-key" },
+            { "name": "UNSUBSCRIBE_SECRET", "secret": "unsubscribe-secret" },
             { "name": "SESSION_SECRET_KEY", "secret": "session-secret-key" },
             { "name": "ALGORITHM", "value": "HS256" },
             { "name": "ACCESS_TOKEN_EXPIRE_MINUTES", "value": "30" },
@@ -467,7 +473,8 @@
             "local": "http://localhost:8000"
           }
         },
-        { "name": "SECRET_KEY", "secret": "jwt-secret-key" }
+        { "name": "SECRET_KEY", "secret": "jwt-secret-key" },
+        { "name": "UNSUBSCRIBE_SECRET", "keyVaultReference": "unsubscribe-secret" }
       ],
       "local": {
         "cpu": "1",

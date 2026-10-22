@@ -58,7 +58,7 @@ param mongoConnectionString string
 param acsConnectionString string
 
 @secure()
-@description('JWT/unsubscribe signing key for the Function App (read from Key Vault by the parameter file).')
+@description('JWT signing key for the Function App (read from Key Vault by the parameter file).')
 param jwtSecretKey string
 
 @secure()
@@ -224,6 +224,8 @@ module functionApps 'modules/function-app.bicep' = [
       appInsightsId: monitoring.outputs.appInsightsId
       storageAccountName: storage.outputs.name
       contentShareName: names.functionContentShare
+      keyVaultUri: keyVaultUri
+      secretCatalog: platform.secrets
       runFromPackage: campaignRunFromPackage
       secretValues: {
         'mongodb-connection-string': mongoConnectionString
@@ -263,7 +265,8 @@ module roleAssignments 'modules/role-assignments.bicep' = if (deployRoleAssignme
     registryName: registry.outputs.name
     identityPrincipals: identities.outputs.identities
     environmentPrincipalIds: [for (env, i) in items(containerAppsEnvironments): environments[i].outputs.principalId]
-    functionAppName: platform.functionApps[0].azureName
+    functionAppName: functionApps[0].outputs.name
+    functionAppPrincipalId: functionApps[0].outputs.principalId
     campaignDeployPrincipalId: campaignDeployPrincipalId
   }
   dependsOn: [

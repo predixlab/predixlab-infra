@@ -29,7 +29,7 @@ Local orchestration state is stored separately in `~/.predixlab-staging` (`PLX_H
 
 | Path | Content |
 | --- | --- |
-| `secrets.env` | Local secrets (mode 0600), keyed by secret catalog name; independent `jwt-secret-key` and `session-secret-key` values are generated |
+| `secrets.env` | Local secrets (mode 0600), keyed by secret catalog name; independent `jwt-secret-key`, `unsubscribe-secret`, and `session-secret-key` values are generated |
 | `config.json` | Optional local overrides (network, catch-up window, disabled jobs, environment variables, build resources) |
 | `state.json` | Desired state (`up`/`down`), individually stopped services and the last fire time of each job; guarded by `state.json.lock` |
 | `logs/agent.log` | Agent log (rotated) |
@@ -41,6 +41,8 @@ MongoDB and Azurite data live in the named volumes `plx-mongo-data` and `plx-azu
 `./plx destroy --yes --purge-data` removes staging state and emulator volumes, but does not remove the raw data directory.
 
 For an existing staging environment, rerun `./plx init` before starting the updated API. It adds a missing `session-secret-key` without replacing existing keys; the API receives it as `SESSION_SECRET_KEY`. This key is stable across restarts. Rotating it invalidates existing session cookies and requires in-progress OAuth sign-ins to restart.
+
+`./plx init` also adds a missing `unsubscribe-secret` without replacing existing keys. It corresponds to production's `campaign-unsubscribe-signing-key` and is shared by API and campaign as `UNSUBSCRIBE_SECRET`, independent of the JWT and session keys. Function App `keyVaultReference` settings resolve to the local catalog value rather than an Azure reference string. `./plx env api` and `./plx env campaign` mask it unless `--show-secrets` is explicitly requested.
 
 ## Job execution semantics
 

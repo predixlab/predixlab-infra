@@ -3,13 +3,14 @@
 // Env entry forms (platform.json):
 //   { name, value }                      same value in every environment
 //   { name, secret }                     secret catalog key, resolved per environment
+//   { name, keyVaultReference }          Function App runtime Key Vault reference; local secret value
 //   { name, parameter }                  parameter catalog key; the deployment supplies the value
 //   { name, values: { <env>: value } }   environment-specific; omitted where absent
 
 @export()
 @description('Returns true when the env entry applies to the given environment.')
 func appliesTo(entry object, environmentName string) bool =>
-  contains(entry, 'secret') || contains(entry, 'value') || contains(entry, 'parameter') || contains(entry.?values ?? {}, environmentName)
+  contains(entry, 'secret') || contains(entry, 'keyVaultReference') || contains(entry, 'value') || contains(entry, 'parameter') || contains(entry.?values ?? {}, environmentName)
 
 @export()
 @description('Plain (non-secret) value of an env entry; parameter entries read the deployment parameter values.')
