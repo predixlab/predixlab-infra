@@ -21,6 +21,8 @@ The Bicep templates provision the PredixLab platform in the `predixlab` resource
 | `backup.bicep` | Recovery Services vault and the daily (19:30 UTC, 30-day retention) backup policy for the `predixlab-data` share |
 | `role-assignments.bicep` | Optional Key Vault, AcrPull, and deployment role assignments, enabled by `deployRoleAssignments` |
 
+Data collection and options analysis run as part of the hosted service and aren't in the public repositories.
+
 The API, jobs, and Function App settings are defined in [`config/platform.json`](../config/platform.json) and translated into ARM resources by the Bicep modules and [`platform-functions.bicep`](../azure/modules/platform-functions.bicep). Environment entries support `value` (shared), `values.prod` (production-specific), `secret` (Key Vault-backed), and `parameter` (deployment-time input). Container Apps use Key Vault references. Function App `secret` settings remain literal values read during deployment; its Function-App-only `keyVaultReference` setting kind instead renders a runtime reference using the secret catalog.
 
 ### Resource ownership

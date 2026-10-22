@@ -2,6 +2,10 @@
 
 The local staging environment runs the platform workloads with Apple's `container` runtime. It shares application settings and UTC job schedules with the [Azure deployment](azure.md), while MongoDB, storage, and email delivery use local equivalents.
 
+## Requirements
+
+See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. Data collection and options analysis run as part of the hosted service and aren't in the public repositories. Local staging of the `signal` and `options` jobs requires access to the `predixlab-collector` and `predixlab-options` sibling repositories.
+
 ## Components
 
 ```text
