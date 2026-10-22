@@ -4,6 +4,8 @@
 
 `predixlab-infra` provides a local staging environment based on Apple's `container` runtime and Azure infrastructure defined with Bicep. Both environments use the workload configuration in [`config/platform.json`](config/platform.json) for application settings, container specifications, and job schedules. Validate changes locally before releasing them to production.
 
+The six core components (signals, API, dashboard, campaign, infrastructure, and website) are open source under Apache-2.0.
+
 | Path | Purpose |
 | --- | --- |
 | [`config/platform.json`](config/platform.json) | Shared workload definitions: images, commands, resources, environment variables, secret references, job schedules, queues, and static sites |
@@ -28,6 +30,8 @@ Environment-specific values use `values: { prod, local }`. Deployment-specific v
 | Azure Communication Services email | Disabled by default; the API uses `EMAIL_BACKEND=console` for verification codes |
 | Log Analytics | `./plx logs …`; job logs under `~/.predixlab-staging/logs/jobs/` |
 
+The collector gathers market data; the options component performs options analysis. These two components are not publicly available at this time.
+
 ## Schedules
 
 Job schedules use UTC in both environments. Locally, a launchd-managed `plx agent` dispatches each due execution to separate Apple `container` job containers; it does not run the collector, signals, or options application code on the host:
@@ -42,7 +46,9 @@ After sleep or an agent interruption, runs within the `catchUpMinutes` window (d
 
 ## Quick start
 
-Requirements: Apple silicon with macOS 26, Apple `container` (`brew install container`), Rosetta 2, and the sibling repositories `predixlab-api`, `predixlab-collector`, `predixlab-signals`, `predixlab-options`, `predixlab-campaign`, `predixlab-dashboard`, and `predixlab-portal`.
+Requirements: Apple silicon with macOS 26, Apple `container` (`brew install container`), Rosetta 2, and the sibling repositories `predixlab-api`, `predixlab-signals`, `predixlab-campaign`, `predixlab-dashboard`, and `predixlab-portal`.
+
+Local staging of the `signal` job's collection step and the `options` job also requires access to the `predixlab-collector` and `predixlab-options` sibling repositories, which are not publicly available at this time.
 
 The Dashboard's remote is
 [`predixlab-webapp`](https://github.com/predixlab/predixlab-webapp); clone it
