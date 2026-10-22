@@ -4,7 +4,7 @@ The local staging environment runs the platform workloads with Apple's `containe
 
 ## Requirements
 
-See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. The `signal` job uses `predixlab-collector` for data collection; the `options` job uses `predixlab-options` for options analysis. These two components are not publicly available at this time. Local staging of these jobs requires access to their sibling repositories.
+See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. Data collection and options analysis run as part of the hosted service and aren't in the public repositories. Local staging of the `signal` and `options` jobs requires access to the `predixlab-collector` and `predixlab-options` sibling repositories.
 
 ## Components
 
