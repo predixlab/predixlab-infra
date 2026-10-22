@@ -56,7 +56,7 @@ For an existing staging environment, rerun `./plx init` before starting the upda
 
 ## Job execution semantics
 
-Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `config.json`.
+Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `~/.predixlab-staging/config.json`.
 
 - One execution per job may run at a time, matching production parallelism. Additional triggers are skipped and recorded.
 - Init containers run sequentially and must succeed before the main container starts. `replicaTimeout` applies to the entire execution; `replicaRetryLimit` reruns the full replica, including init containers.
