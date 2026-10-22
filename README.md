@@ -50,9 +50,11 @@ Requirements: Apple silicon with macOS 26, Apple `container` (`brew install cont
 
 Set `PLX_WORKSPACE` to override the default directory containing the sibling repositories. Without `predixlab-collector` and `predixlab-options` there, `./plx doctor` reports `FAIL` for `image collector` and `image options` and exits 1 even if all other checks pass. `./plx build collector options` fails with missing-repository errors and exits 1. A bare `./plx build` attempts every target, continues after failures, and exits 1 with collector and options reported as failed. Use the explicit public build targets shown below instead.
 
-Per the code, each public build target uses its own repository and does not depend on the collector/options repositories; the api, campaign, dashboard and portal services do not use those images. The full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the `predixlab-collector` and `predixlab-options` repositories, respectively, which aren't in the public repositories, or use `./plx pull-prod collector` and `./plx pull-prod options` with separately authorized registry access.
+Each public build target uses its own repository and does not depend on the collector/options repositories; the api, campaign, dashboard and portal services do not use those images. The full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the collector and options repositories, which aren't public.
 
-Also per the code, `./plx job run signal --skip-init` skips the collector init container and runs only the signals container. It needs input data already present in `~/.predixlab` (or `PLX_DATA_DIR`) and models under that directory's `models/us/`.
+Building and running staging with only the public repositories has not yet been tested end to end.
+
+`./plx job run signal --skip-init` skips the collector init container and runs only the signals container. It needs input data already present in `~/.predixlab` (or `PLX_DATA_DIR`) and models under that directory's `models/us/`.
 
 The Dashboard's remote is
 [`predixlab-webapp`](https://github.com/predixlab/predixlab-webapp); clone it
@@ -74,6 +76,7 @@ cd predixlab-infra
 
 Install the optional background scheduler with `./plx scheduler install` only
 after reviewing configuration, local secrets, job schedules, and available data.
+Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `config.json`.
 Do not enable scheduled collection or publication merely to validate documentation.
 
 Existing raw data in `~/.predixlab` is available directly to the API and job containers at `/data`; no data copy is required. Optionally use `./plx seed data --from-azure --options-days 2` to populate missing files or `./plx seed db --from-azure --yes` for market-data collections. Azure seeding requires access to the production data source. See [Local staging](docs/local.md) for state, build, and scheduling details.
