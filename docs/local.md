@@ -8,6 +8,8 @@ See the [quick start](../README.md#quick-start) for host and sibling-repository 
 
 Use `./plx build api signals campaign dashboard portal` for the public targets. Each builds from its own repository without depending on the collector/options repositories, and the api, campaign, dashboard and portal services do not use those images.
 
+Building and running staging with only the public repositories has not yet been tested end to end.
+
 The full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the collector and options repositories, which aren't public. `./plx job run signal --skip-init` skips the collector init container and runs only the signals container; input data must already be present in `~/.predixlab` (or `PLX_DATA_DIR`), with models under that directory's `models/us/`.
 
 ## Components
@@ -53,6 +55,8 @@ For an existing staging environment, rerun `./plx init` before starting the upda
 `./plx init` also adds a missing `unsubscribe-secret` without replacing existing keys. It corresponds to production's `campaign-unsubscribe-signing-key` and is shared by API and campaign as `UNSUBSCRIBE_SECRET`, independent of the JWT and session keys. Function App `keyVaultReference` settings resolve to the local catalog value rather than an Azure reference string. `./plx env api` and `./plx env campaign` mask it unless `--show-secrets` is explicitly requested.
 
 ## Job execution semantics
+
+Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead.
 
 - One execution per job may run at a time, matching production parallelism. Additional triggers are skipped and recorded.
 - Init containers run sequentially and must succeed before the main container starts. `replicaTimeout` applies to the entire execution; `replicaRetryLimit` reruns the full replica, including init containers.
