@@ -4,7 +4,11 @@ The local staging environment runs the platform workloads with Apple's `containe
 
 ## Requirements
 
-See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. Data collection and options analysis run as part of the hosted service and aren't in the public repositories. Local staging of the `signal` and `options` jobs requires access to the `predixlab-collector` and `predixlab-options` sibling repositories.
+See the [quick start](../README.md#quick-start) for host and sibling-repository requirements. `PLX_WORKSPACE` overrides the default sibling workspace. Without `predixlab-collector` and `predixlab-options` in that workspace, `./plx doctor` reports `FAIL` for `image collector` and `image options` and exits 1 even if all other checks pass. `./plx build collector options` fails with missing-repository errors and exits 1. A bare `./plx build` attempts every target, continues after failures, and exits 1 with collector and options reported as failed.
+
+Use `./plx build api signals campaign dashboard portal` for the public targets. Per the code, each builds from its own repository without depending on the collector/options repositories, and the api, campaign, dashboard and portal services do not use those images.
+
+Per the code, the full `signal` job (with collection) needs the collector image, and the `options` job needs the options image. Build these from the `predixlab-collector` and `predixlab-options` repositories, respectively, which aren't in the public repositories, or use `./plx pull-prod collector` and `./plx pull-prod options` with separately authorized registry access. Also per the code, `./plx job run signal --skip-init` skips the collector init container and runs only the signals container; input data must already be present in `~/.predixlab` (or `PLX_DATA_DIR`), with models under that directory's `models/us/`.
 
 ## Components
 
@@ -74,7 +78,7 @@ For an existing staging environment, rerun `./plx init` before starting the upda
 ./plx seed db --from-azure --yes  # optional: market-data collections
 ```
 
-Do not seed from `~/.predixlab` when it is the mounted directory. Azure data seeding reads the production share; database seeding copies market-data collections and refuses personal-data collections. Without seeding, the collector backfills from 2015-01-01 on its first run. The signal job requires models under `~/.predixlab/models/us/` (or the corresponding path under `PLX_DATA_DIR`).
+Do not seed from `~/.predixlab` when it is the mounted directory. Azure data seeding reads the production share; database seeding copies market-data collections and refuses personal-data collections. If the collector image is available, an unseeded data directory is backfilled from 2015-01-01 on the first `signal` run; otherwise, provide the input data yourself before running `signal --skip-init`. The signal job requires models under `~/.predixlab/models/us/` (or the corresponding path under `PLX_DATA_DIR`).
 
 ## Adding or changing configuration
 
