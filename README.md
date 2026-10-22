@@ -76,7 +76,7 @@ cd predixlab-infra
 
 Install the optional background scheduler with `./plx scheduler install` only
 after reviewing configuration, local secrets, job schedules, and available data.
-Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead.
+Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `config.json`.
 Do not enable scheduled collection or publication merely to validate documentation.
 
 Existing raw data in `~/.predixlab` is available directly to the API and job containers at `/data`; no data copy is required. Optionally use `./plx seed data --from-azure --options-days 2` to populate missing files or `./plx seed db --from-azure --yes` for market-data collections. Azure seeding requires access to the production data source. See [Local staging](docs/local.md) for state, build, and scheduling details.
