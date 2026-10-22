@@ -59,9 +59,8 @@ Building and running staging with only the public repositories has not yet been 
 The Dashboard's remote is
 [`predixlab-webapp`](https://github.com/predixlab/predixlab-webapp); clone it
 into a sibling directory named `predixlab-dashboard`. Unit tests require only
-Python 3.9+ and do not need Azure or the container runtime. Registry pulls,
-production seeding, and cloud deployments require separately authorized access;
-cloning this repository does not grant it.
+Python 3.9+ and do not need Azure or the container runtime. Cloud deployments
+require separately authorized access.
 
 ```bash
 git clone https://github.com/predixlab/predixlab-infra.git
@@ -76,7 +75,7 @@ cd predixlab-infra
 
 Install the optional background scheduler with `./plx scheduler install` only
 after reviewing configuration, local secrets, job schedules, and available data.
-Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `config.json`.
+Without the collector image, the scheduled `signal` job fails at its init step (scheduled runs always run init containers); run it manually with `./plx job run signal --skip-init` instead. Likewise, without the options image the `options` job fails, both scheduled and manual, because the options image is its only container and `--skip-init` does not apply; to stop scheduled attempts, set `"jobs": { "options": { "enabled": false } }` in `~/.predixlab-staging/config.json`.
 Do not enable scheduled collection or publication merely to validate documentation.
 
 Existing raw data in `~/.predixlab` is available directly to the API and job containers at `/data`; no data copy is required. Optionally use `./plx seed data --from-azure --options-days 2` to populate missing files or `./plx seed db --from-azure --yes` for market-data collections. Azure seeding requires access to the production data source. See [Local staging](docs/local.md) for state, build, and scheduling details.
@@ -106,7 +105,7 @@ Existing raw data in `~/.predixlab` is available directly to the API and job con
 | Frontend production origins are rewritten during local builds (`originRewrites`) | Directs Dashboard and Portal requests to local endpoints |
 | Portal is built without `VITE_GA_MEASUREMENT_ID` | Excludes staging traffic from production analytics |
 | The API starts `/app/.venv/bin/uvicorn` directly as `appuser` | Accommodates differences in non-root process capabilities between Apple container and Container Apps |
-| CPUs are rounded up (0.5 → 1); images are arm64 (campaign is amd64) | Apple container only accepts whole CPUs; `./plx pull-prod <image>` runs the exact production amd64 image instead |
+| CPUs are rounded up (0.5 → 1); images are arm64 (campaign is amd64) | Apple container only accepts whole CPUs |
 | The SWA emulator redirects paths without a trailing slash with 301 (production returns 200) | Static Web Apps CLI emulator behavior |
 
 The collector and signals run in separate containers within the `signal` job. Collector runs first as the init container; signals starts after collection succeeds. Both mount the same raw data directory at `/data`.
