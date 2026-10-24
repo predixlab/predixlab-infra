@@ -69,6 +69,12 @@ class PlatformFileTests(unittest.TestCase):
         campaign = {entry.name: entry for entry in entries_for(self.platform.function_apps[0]["settings"], "local")}
         self.assertEqual(campaign["CAMPAIGN_DELIVERY_BACKEND"].value, "console")
 
+    def test_api_public_origin_matches_each_environment(self) -> None:
+        api = self.platform.container_apps[0]["containers"][0]
+        for environment in ("prod", "local"):
+            env = {entry.name: entry for entry in entries_for(api["env"], environment)}
+            self.assertEqual(env["PUBLIC_API_URL"].value, self.platform.endpoints(environment)["api"])
+
     def test_api_session_secret_is_independent_and_key_vault_backed(self) -> None:
         catalog = self.platform.secrets["session-secret-key"]
         self.assertEqual(catalog["keyVaultSecret"], "session-secret-key")

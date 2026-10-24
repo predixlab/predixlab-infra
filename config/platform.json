@@ -217,6 +217,13 @@
           "env": [
             { "name": "MONGODB_URL", "secret": "mongodb-connection-string" },
             { "name": "DATABASE_NAME", "value": "predixlab" },
+            {
+              "name": "PUBLIC_API_URL",
+              "values": {
+                "prod": "https://api.predixlab.com",
+                "local": "http://localhost:8000"
+              }
+            },
             { "name": "SECRET_KEY", "secret": "jwt-secret-key" },
             { "name": "UNSUBSCRIBE_SECRET", "secret": "unsubscribe-secret" },
             { "name": "SESSION_SECRET_KEY", "secret": "session-secret-key" },
